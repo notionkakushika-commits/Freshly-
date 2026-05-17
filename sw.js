@@ -2,7 +2,7 @@
  * - 自前リソース(HTML/CSS/JS/icon)はオフラインで動くようキャッシュ
  * - Tesseractのモデル(jsdelivr)はキャッシュせず、ネット時のみ初回DL
  */
-const CACHE = 'freshly-v1';
+const CACHE = 'freshly-v2';
 const ASSETS = [
   './',
   './index.html',
