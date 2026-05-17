@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
-<title>消費期限トラッカー</title>
+<title>Freshly</title>
 
 <!-- PWA / iOS -->
 <link rel="manifest" href="./manifest.webmanifest">
@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="期限管理">
+<meta name="apple-mobile-web-app-title" content="Freshly">
 <link rel="apple-touch-icon" href="./icon-180.png">
 <link rel="icon" href="./favicon-32.png" sizes="32x32">
 
@@ -83,6 +83,66 @@
     width: 100%; padding: 12px; border: 1px solid var(--border);
     border-radius: 10px; font-size: 16px; background: white;
   }
+
+  /* ===== ダイヤル式(3ホイール)日付ピッカー ===== */
+  .wheel-picker {
+    position: relative;
+    display: grid;
+    grid-template-columns: 2fr 1.4fr 1.4fr;
+    gap: 0;
+    height: 150px;
+    background: #f9fafb;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-top: 4px;
+  }
+  .wheel-indicator {
+    position: absolute;
+    top: 50%;
+    left: 0; right: 0;
+    height: 30px;
+    transform: translateY(-50%);
+    background: rgba(37,99,235,0.07);
+    border-top: 1px solid rgba(37,99,235,0.28);
+    border-bottom: 1px solid rgba(37,99,235,0.28);
+    pointer-events: none;
+    z-index: 1;
+  }
+  .wheel-col {
+    overflow-y: scroll;
+    scroll-snap-type: y mandatory;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    padding: 60px 0;             /* 上下のpaddingで中央に最初/最後の値を寄せる */
+    -webkit-overflow-scrolling: touch;
+    text-align: center;
+  }
+  .wheel-col::-webkit-scrollbar { display: none; }
+  .wheel-item {
+    height: 30px;
+    line-height: 30px;
+    scroll-snap-align: center;
+    font-size: 16px;
+    color: #9ca3af;
+    font-variant-numeric: tabular-nums;
+    transition: color .15s, font-weight .15s, transform .15s;
+    user-select: none;
+  }
+  .wheel-item.active {
+    color: #1f2937;
+    font-weight: 700;
+    font-size: 18px;
+  }
+  .wheel-labels {
+    display: grid;
+    grid-template-columns: 2fr 1.4fr 1.4fr;
+    text-align: center;
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 4px;
+    letter-spacing: 0.04em;
+  }
   label { font-size: 12px; color: var(--muted); display: block; margin: 10px 0 4px; }
   .status { font-size: 12px; color: var(--muted); margin-top: 8px; min-height: 16px; }
   .hint  { font-size: 11px; color: var(--muted); margin-top: 4px; }
@@ -142,7 +202,7 @@
 
 <header>
   <div>
-    <h1>消費期限トラッカー</h1>
+    <h1>Freshly</h1>
     <div class="sub">表写真 × 裏写真OCR で期限管理</div>
   </div>
   <div style="display:flex; gap:6px;">
@@ -185,8 +245,15 @@
     <label>商品名 (任意)</label>
     <input type="text" id="itemName" placeholder="例: 牛乳">
     <label>消費期限</label>
-    <input type="date" id="expiry">
-    <div class="hint">OCRで読めた場合は自動入力されます。違っていれば手動修正可。</div>
+    <div class="wheel-picker" id="datePicker">
+      <div class="wheel-indicator"></div>
+      <div class="wheel-col" id="yearWheel"></div>
+      <div class="wheel-col" id="monthWheel"></div>
+      <div class="wheel-col" id="dayWheel"></div>
+    </div>
+    <div class="wheel-labels"><span>年</span><span>月</span><span>日</span></div>
+    <input type="hidden" id="expiry">
+    <div class="hint">OCRで読めた場合は自動セット。指でスクロールして微調整できます。</div>
   </div>
 
   <!-- 一覧パネル -->
@@ -344,6 +411,85 @@ function applyCapture(dataUrl) {
   closeCamera();
 }
 
+/* ============ ダイヤル式日付ピッカー ============ */
+const PICKER_CELL_H = 30;
+let pickerState = { year: 0, month: 0, day: 0 };
+const yearRange = (() => {
+  const now = new Date().getFullYear();
+  const arr = [];
+  for (let i = -1; i <= 10; i++) arr.push(now + i);
+  return arr;
+})();
+const monthRange = Array.from({ length: 12 }, (_, i) => i + 1);
+function getDayRange(y, m) {
+  const last = new Date(y, m, 0).getDate();
+  return Array.from({ length: last }, (_, i) => i + 1);
+}
+function markActive(wheel) {
+  const idx = Math.round(wheel.scrollTop / PICKER_CELL_H);
+  Array.from(wheel.children).forEach((c, i) => c.classList.toggle('active', i === idx));
+}
+function buildWheel(elId, values, current) {
+  const el = document.getElementById(elId);
+  el.innerHTML = values.map(v => `<div class="wheel-item">${v}</div>`).join('');
+  el._values = values;
+  el._suppress = true;
+  const idx = values.indexOf(current);
+  requestAnimationFrame(() => {
+    el.scrollTop = (idx < 0 ? 0 : idx) * PICKER_CELL_H;
+    markActive(el);
+    setTimeout(() => { el._suppress = false; }, 220);
+  });
+  if (!el._listenerAttached) {
+    el._listenerAttached = true;
+    let timer;
+    el.addEventListener('scroll', () => {
+      if (el._suppress) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (el._suppress) return;
+        const newIdx = Math.round(el.scrollTop / PICKER_CELL_H);
+        markActive(el);
+        const safe = Math.max(0, Math.min(el._values.length - 1, newIdx));
+        onWheelChange(elId, el._values[safe]);
+      }, 100);
+    });
+  }
+}
+function onWheelChange(elId, value) {
+  if (elId === 'yearWheel')  pickerState.year  = value;
+  if (elId === 'monthWheel') pickerState.month = value;
+  if (elId === 'dayWheel')   pickerState.day   = value;
+  if (elId === 'yearWheel' || elId === 'monthWheel') {
+    const days = getDayRange(pickerState.year, pickerState.month);
+    if (pickerState.day > days.length) pickerState.day = days.length;
+    buildWheel('dayWheel', days, pickerState.day);
+  }
+  syncExpiryFromPicker();
+}
+function syncExpiryFromPicker() {
+  const s = `${pickerState.year}-${String(pickerState.month).padStart(2, '0')}-${String(pickerState.day).padStart(2, '0')}`;
+  document.getElementById('expiry').value = s;
+}
+function setPickerDate(dateStr) {
+  if (!dateStr) return;
+  const [y, m, d] = dateStr.split('-').map(Number);
+  if (!y || !m || !d) return;
+  // 範囲外の年は最寄りにクランプ
+  const yy = yearRange.includes(y) ? y : (y < yearRange[0] ? yearRange[0] : yearRange[yearRange.length - 1]);
+  const days = getDayRange(yy, m);
+  const dd = Math.min(d, days.length);
+  pickerState = { year: yy, month: m, day: dd };
+  buildWheel('yearWheel',  yearRange,  yy);
+  buildWheel('monthWheel', monthRange, m);
+  buildWheel('dayWheel',   days,       dd);
+  syncExpiryFromPicker();
+}
+function initPicker() {
+  const t = new Date();
+  setPickerDate(`${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`);
+}
+
 /* ============ OCR ============ */
 async function runOCR() {
   if (!backImg) return;
@@ -354,10 +500,12 @@ async function runOCR() {
       logger: m => { if (m.status) status.textContent = `OCR: ${m.status} ${(m.progress*100).toFixed(0)}%`; }
     });
     const text = data.text || '';
-    const date = extractExpiryDate(text);
-    if (date) {
-      document.getElementById('expiry').value = date;
-      status.textContent = `読取: ${date}`;
+    const result = extractExpiryDate(text);
+    if (result) {
+      setPickerDate(result.date);
+      status.textContent = result.inferred
+        ? `読取: ${result.date} (年月のみ検出 → 月末まで有効と解釈)`
+        : `読取: ${result.date}`;
     } else {
       status.textContent = `日付検出できず。手入力してください。 (読取: ${text.replace(/\n/g,' ').slice(0,60)})`;
     }
@@ -365,15 +513,19 @@ async function runOCR() {
     status.textContent = 'OCR失敗: ' + e.message;
   }
 }
+// 期限抽出: 年月日が揃えばそれを、年月のみなら月末日を補完して返す。
+// 戻り値: { date: 'YYYY-MM-DD', inferred: boolean } または null
 function extractExpiryDate(text) {
   if (!text) return null;
   const t = text.replace(/[Ｏo]/g,'0').replace(/[Ⅰl]/g,'1');
-  const patterns = [
-    /(20\d{2})\D{0,2}(\d{1,2})\D{0,2}(\d{1,2})/,
+
+  // ① 年月日が3つ揃ったパターン (優先)
+  const fullPatterns = [
+    /(20\d{2})\D{0,2}(\d{1,2})\D{0,2}(\d{1,2})(?!\d)/,
     /(20\d{2})年\s?(\d{1,2})月\s?(\d{1,2})日/,
-    /(\d{2})\D{0,2}(\d{1,2})\D{0,2}(\d{1,2})/
+    /(\d{2})\D{0,2}(\d{1,2})\D{0,2}(\d{1,2})(?!\d)/
   ];
-  for (const re of patterns) {
+  for (const re of fullPatterns) {
     const m = t.match(re);
     if (m) {
       let y = parseInt(m[1],10);
@@ -381,10 +533,30 @@ function extractExpiryDate(text) {
       const mo = parseInt(m[2],10);
       const d  = parseInt(m[3],10);
       if (y >= 2020 && y < 2100 && mo>=1 && mo<=12 && d>=1 && d<=31) {
-        return `${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        return { date: `${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`, inferred: false };
       }
     }
   }
+
+  // ② 年月のみ (日は月末日を補完: 食品表示法の「年月」表示は当月末まで有効と解釈)
+  const ymPatterns = [
+    /(20\d{2})年\s?(\d{1,2})月(?!\s?\d)/,
+    /(20\d{2})\D{0,2}(\d{1,2})(?!\d)/,
+    /(\d{2})年\s?(\d{1,2})月(?!\s?\d)/
+  ];
+  for (const re of ymPatterns) {
+    const m = t.match(re);
+    if (m) {
+      let y = parseInt(m[1],10);
+      if (y < 100) y += 2000;
+      const mo = parseInt(m[2],10);
+      if (y >= 2020 && y < 2100 && mo>=1 && mo<=12) {
+        const lastDay = new Date(y, mo, 0).getDate(); // 月末日
+        return { date: `${y}-${String(mo).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`, inferred: true };
+      }
+    }
+  }
+
   return null;
 }
 
@@ -409,9 +581,10 @@ function resetForm() {
   document.getElementById('frontThumb').innerHTML = '<span>表(商品)</span><span class="pill">タップで撮影</span>';
   document.getElementById('backThumb').innerHTML  = '<span>裏(期限)</span><span class="pill">タップで撮影</span>';
   document.getElementById('itemName').value = '';
-  document.getElementById('expiry').value = '';
   document.getElementById('ocrStatus').textContent = '';
   document.getElementById('ocrBtn').disabled = true;
+  // 日付ピッカーは今日に戻す
+  initPicker();
 }
 async function deleteItem(id) {
   if (!confirm('この項目を消去しますか?')) return;
@@ -481,6 +654,7 @@ if ('serviceWorker' in navigator) {
 }
 
 /* 起動時 */
+initPicker();
 renderList();
 </script>
 </body>

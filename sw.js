@@ -1,8 +1,8 @@
-/* 消費期限トラッカー Service Worker
+/* Freshly Service Worker
  * - 自前リソース(HTML/CSS/JS/icon)はオフラインで動くようキャッシュ
  * - Tesseractのモデル(jsdelivr)はキャッシュせず、ネット時のみ初回DL
  */
-const CACHE = 'expiry-pwa-v1';
+const CACHE = 'freshly-v1';
 const ASSETS = [
   './',
   './index.html',

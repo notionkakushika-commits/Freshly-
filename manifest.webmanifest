@@ -1,7 +1,7 @@
 {
-  "name": "消費期限トラッカー",
-  "short_name": "期限管理",
-  "description": "表写真と裏写真(期限OCR)を紐付けて、期限が近い順に管理するアプリ",
+  "name": "Freshly",
+  "short_name": "Freshly",
+  "description": "Snap the front and back of an item, OCR the expiry date, and track what to use first.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

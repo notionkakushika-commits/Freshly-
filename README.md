@@ -1,4 +1,4 @@
-# 消費期限トラッカー PWA — iPhone導入手順
+# Freshly — iPhone導入手順 (GitHub Pages版)
 
 このフォルダ一式 (index.html, sw.js, manifest.webmanifest, icon-*.png) を HTTPS のサーバに置けば、iPhoneでホーム画面に追加して普通のアプリのように使えます。Apple Developer登録($99/年)も審査も不要です。
 
@@ -16,7 +16,7 @@
 1. Safariで上記URLを開く (※ Chromeアプリではなく Safari で開くこと)
 2. 画面下の共有ボタン (□に↑のアイコン) をタップ
 3. 「ホーム画面に追加」を選択
-4. 名前は「期限管理」のままで「追加」
+4. 名前は「Freshly」のままで「追加」
 
 これでホーム画面にアイコンが追加され、タップするとアプリ風(全画面・Safariのアドレスバーなし)で起動します。
 

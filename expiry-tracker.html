@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>消費期限トラッカー (サンプル)</title>
+<!-- Tesseract.js (OCR) -->
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.0.4/dist/tesseract.min.js"></script>
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --card: #ffffff;
+    --text: #1f2937;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+    --primary: #2563eb;
+    --primary-hover: #1d4ed8;
+    --danger: #dc2626;
+    --danger-hover: #b91c1c;
+    --warn: #f59e0b;
+    --ok: #10b981;
+    --soon: #ef4444;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Yu Gothic", Roboto, sans-serif;
+  }
+  header {
+    background: #ffffff;
+    border-bottom: 1px solid var(--border);
+    padding: 14px 20px;
+    display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; z-index: 10;
+  }
+  header h1 { font-size: 18px; margin: 0; }
+  header .sub { font-size: 12px; color: var(--muted); }
+  main { padding: 16px; max-width: 900px; margin: 0 auto; }
+  .panel {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px; margin-bottom: 16px;
+  }
+  .panel h2 { font-size: 15px; margin: 0 0 12px; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .col { flex: 1; min-width: 220px; }
+  .thumb {
+    width: 100%; aspect-ratio: 4/3; background: #f1f3f5;
+    border: 1px dashed var(--border); border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--muted); font-size: 12px; overflow: hidden;
+  }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; }
+  button {
+    border: none; cursor: pointer; padding: 8px 14px; border-radius: 8px;
+    font-size: 13px; font-weight: 600; color: white; background: var(--primary);
+  }
+  button:hover { background: var(--primary-hover); }
+  button.secondary { background: #6b7280; }
+  button.secondary:hover { background: #4b5563; }
+  button.danger { background: var(--danger); }
+  button.danger:hover { background: var(--danger-hover); }
+  button[disabled] { opacity: 0.5; cursor: not-allowed; }
+  .btn-row { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  input[type="text"], input[type="date"] {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--border);
+    border-radius: 8px; font-size: 14px; background: white;
+  }
+  label { font-size: 12px; color: var(--muted); display: block; margin: 8px 0 4px; }
+  .status { font-size: 12px; color: var(--muted); margin-top: 8px; min-height: 16px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 10px; border-bottom: 1px solid var(--border); text-align: left; font-size: 13px; vertical-align: middle; }
+  th { background: #f9fafb; color: var(--muted); font-weight: 600; font-size: 12px; }
+  td img { width: 56px; height: 56px; object-fit: cover; border-radius: 6px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+  .badge.ok { background: #d1fae5; color: #065f46; }
+  .badge.warn { background: #fef3c7; color: #92400e; }
+  .badge.soon { background: #fee2e2; color: #991b1b; }
+  .empty { text-align: center; color: var(--muted); padding: 20px; font-size: 13px; }
+  video, canvas.preview {
+    width: 100%; max-width: 320px; aspect-ratio: 4/3;
+    background: #000; border-radius: 8px;
+  }
+  .modal-bg {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+    display: none; align-items: center; justify-content: center; z-index: 50;
+  }
+  .modal-bg.show { display: flex; }
+  .modal {
+    background: white; padding: 16px; border-radius: 12px;
+    max-width: 360px; width: 92%;
+  }
+  .modal h3 { margin: 0 0 8px; font-size: 15px; }
+  .switch-camera { font-size: 12px; color: var(--primary); cursor: pointer; }
+  .hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>消費期限トラッカー</h1>
+    <div class="sub">サンプル版 — 表写真と裏写真(期限OCR)を紐付け管理</div>
+  </div>
+  <button class="secondary" onclick="clearAll()">全消去</button>
+</header>
+
+<main>
+  <!-- 登録パネル -->
+  <div class="panel">
+    <h2>① 新規登録</h2>
+    <div class="row">
+      <div class="col">
+        <label>表(商品)写真</label>
+        <div class="thumb" id="frontThumb">
+          <span>未撮影</span>
+        </div>
+        <div class="btn-row">
+          <button onclick="openCamera('front')">表を撮影</button>
+        </div>
+      </div>
+      <div class="col">
+        <label>裏(期限)写真</label>
+        <div class="thumb" id="backThumb">
+          <span>未撮影</span>
+        </div>
+        <div class="btn-row">
+          <button onclick="openCamera('back')">裏を撮影</button>
+          <button class="secondary" onclick="runOCR()" id="ocrBtn" disabled>OCRで期限抽出</button>
+        </div>
+        <div class="status" id="ocrStatus"></div>
+      </div>
+      <div class="col">
+        <label>商品名 (任意)</label>
+        <input type="text" id="itemName" placeholder="例: 牛乳">
+        <label>消費期限</label>
+        <input type="date" id="expiry">
+        <div class="hint">OCRで読み取った日付は自動入力。手動修正可。</div>
+        <div class="btn-row">
+          <button onclick="saveItem()" id="saveBtn">登録する</button>
+          <button class="secondary" onclick="resetForm()">リセット</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- リストパネル -->
+  <div class="panel">
+    <h2>② ダッシュボード (期限が近い順)</h2>
+    <div id="listWrap"></div>
+  </div>
+</main>
+
+<!-- カメラ用モーダル -->
+<div class="modal-bg" id="camModal">
+  <div class="modal">
+    <h3 id="camTitle">撮影</h3>
+    <video id="video" autoplay playsinline></video>
+    <div class="btn-row">
+      <button onclick="capture()">📸 撮影</button>
+      <button class="secondary" onclick="closeCamera()">キャンセル</button>
+      <span class="switch-camera" onclick="switchCamera()">カメラ切替</span>
+    </div>
+    <div class="hint">※ ブラウザでカメラ許可が必要です。ファイルアップロードでも可。</div>
+    <input type="file" accept="image/*" capture="environment" id="fileFallback" style="margin-top:8px;">
+  </div>
+</div>
+
+<script>
+const STORAGE_KEY = 'expiry-tracker-items';
+let captureTarget = null; // 'front' | 'back'
+let stream = null;
+let useFacing = 'environment'; // back camera default
+let frontImg = null; // dataURL
+let backImg = null;  // dataURL
+
+// --- カメラ制御 ---
+async function openCamera(target) {
+  captureTarget = target;
+  document.getElementById('camTitle').textContent = (target === 'front' ? '表(商品)を撮影' : '裏(期限)を撮影');
+  document.getElementById('camModal').classList.add('show');
+  await startStream();
+  document.getElementById('fileFallback').onchange = onFileFallback;
+}
+async function startStream() {
+  try {
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: useFacing }, audio: false });
+    document.getElementById('video').srcObject = stream;
+  } catch (e) {
+    console.warn('カメラ起動失敗', e);
+  }
+}
+function switchCamera() {
+  useFacing = (useFacing === 'environment') ? 'user' : 'environment';
+  startStream();
+}
+function closeCamera() {
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = null;
+  document.getElementById('camModal').classList.remove('show');
+}
+function capture() {
+  const video = document.getElementById('video');
+  if (!video.videoWidth) { alert('カメラ未準備です。ファイル選択で代用してください。'); return; }
+  const canvas = document.createElement('canvas');
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+  applyCapture(dataUrl);
+}
+function onFileFallback(e) {
+  const file = e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => applyCapture(reader.result);
+  reader.readAsDataURL(file);
+}
+function applyCapture(dataUrl) {
+  if (captureTarget === 'front') {
+    frontImg = dataUrl;
+    document.getElementById('frontThumb').innerHTML = `<img src="${dataUrl}">`;
+  } else {
+    backImg = dataUrl;
+    document.getElementById('backThumb').innerHTML = `<img src="${dataUrl}">`;
+    document.getElementById('ocrBtn').disabled = false;
+  }
+  closeCamera();
+}
+
+// --- OCR ---
+async function runOCR() {
+  if (!backImg) return;
+  const status = document.getElementById('ocrStatus');
+  status.textContent = 'OCR実行中… (初回は辞書ダウンロード)';
+  try {
+    const { data } = await Tesseract.recognize(backImg, 'jpn+eng', {
+      logger: m => { if (m.status) status.textContent = `OCR: ${m.status} ${(m.progress*100).toFixed(0)}%`; }
+    });
+    const text = data.text || '';
+    const date = extractExpiryDate(text);
+    if (date) {
+      document.getElementById('expiry').value = date;
+      status.textContent = `読取結果: ${date}  (元: ${text.replace(/\n/g,' ').slice(0,80)})`;
+    } else {
+      status.textContent = `日付検出できず。手入力してください。 (読取: ${text.replace(/\n/g,' ').slice(0,80)})`;
+    }
+  } catch (e) {
+    console.error(e);
+    status.textContent = 'OCR失敗: ' + e.message;
+  }
+}
+
+// 日本式日付パターン: 2026.05.17 / 2026/5/17 / 2026年5月17日 / 26.5.17 / 250517 など
+function extractExpiryDate(text) {
+  if (!text) return null;
+  const t = text.replace(/[Ｏo]/g,'0').replace(/[Ⅰl]/g,'1');
+  const patterns = [
+    /(20\d{2})\D{0,2}(\d{1,2})\D{0,2}(\d{1,2})/,            // 2026.05.17
+    /(\d{2})\D{0,2}(\d{1,2})\D{0,2}(\d{1,2})/,              // 26.05.17
+    /(20\d{2})年\s?(\d{1,2})月\s?(\d{1,2})日/,               // 2026年5月17日
+  ];
+  for (const re of patterns) {
+    const m = t.match(re);
+    if (m) {
+      let y = parseInt(m[1],10);
+      if (y < 100) y += 2000;
+      const mo = parseInt(m[2],10);
+      const d  = parseInt(m[3],10);
+      if (y >= 2020 && y < 2100 && mo>=1 && mo<=12 && d>=1 && d<=31) {
+        return `${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      }
+    }
+  }
+  return null;
+}
+
+// --- 保存・一覧 ---
+function loadItems() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
+  catch { return []; }
+}
+function saveItems(items) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+}
+function saveItem() {
+  const expiry = document.getElementById('expiry').value;
+  if (!frontImg) { alert('表写真を撮影してください'); return; }
+  if (!expiry)   { alert('消費期限を入力してください'); return; }
+  const items = loadItems();
+  items.push({
+    id: Date.now() + '-' + Math.random().toString(36).slice(2,6),
+    name: document.getElementById('itemName').value || '(無名)',
+    expiry,
+    front: frontImg,
+    back: backImg || null,
+    created: new Date().toISOString()
+  });
+  saveItems(items);
+  resetForm();
+  renderList();
+}
+function resetForm() {
+  frontImg = null; backImg = null;
+  document.getElementById('frontThumb').innerHTML = '<span>未撮影</span>';
+  document.getElementById('backThumb').innerHTML  = '<span>未撮影</span>';
+  document.getElementById('itemName').value = '';
+  document.getElementById('expiry').value = '';
+  document.getElementById('ocrStatus').textContent = '';
+  document.getElementById('ocrBtn').disabled = true;
+}
+function deleteItem(id) {
+  if (!confirm('この項目を消去しますか?')) return;
+  saveItems(loadItems().filter(x => x.id !== id));
+  renderList();
+}
+function clearAll() {
+  if (!confirm('全項目を消去しますか?')) return;
+  saveItems([]); renderList();
+}
+
+function daysUntil(dateStr) {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const target = new Date(dateStr); target.setHours(0,0,0,0);
+  return Math.round((target - today) / (1000*60*60*24));
+}
+function badge(days) {
+  if (days < 0)  return `<span class="badge soon">${Math.abs(days)}日超過</span>`;
+  if (days <= 3) return `<span class="badge soon">あと${days}日</span>`;
+  if (days <= 7) return `<span class="badge warn">あと${days}日</span>`;
+  return `<span class="badge ok">あと${days}日</span>`;
+}
+function renderList() {
+  const items = loadItems().sort((a,b) => a.expiry.localeCompare(b.expiry));
+  const wrap = document.getElementById('listWrap');
+  if (!items.length) { wrap.innerHTML = '<div class="empty">まだ登録がありません</div>'; return; }
+  let html = `<table>
+    <thead><tr>
+      <th style="width:72px;">表</th><th>商品名</th><th>消費期限</th><th>状態</th><th style="width:80px;">操作</th>
+    </tr></thead><tbody>`;
+  for (const it of items) {
+    const d = daysUntil(it.expiry);
+    html += `<tr>
+      <td>${it.front ? `<img src="${it.front}">` : '-'}</td>
+      <td>${escapeHtml(it.name)}</td>
+      <td>${it.expiry}</td>
+      <td>${badge(d)}</td>
+      <td><button class="danger" onclick="deleteItem('${it.id}')">消去</button></td>
+    </tr>`;
+  }
+  html += `</tbody></table>`;
+  wrap.innerHTML = html;
+}
+function escapeHtml(s) {
+  return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// 起動時
+renderList();
+</script>
+</body>
+</html>
